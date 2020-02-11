@@ -3,62 +3,80 @@ var router = express.Router();
 const https = require('https');
 const url = require('url');
 
+const getViaProxy = (fullUrl, headers) => {
+
+  const parsedUrl = url.parse(fullUrl);
+  const urlHostName = parsedUrl.hostname;
+  const urlPath = parsedUrl.path || '/';
+
+  if (headers.host) {
+    delete headers.host;
+  }
+
+  const options = {
+    hostname: urlHostName,
+    port: 443,
+    path: urlPath,
+    method: 'GET',
+    headers: headers
+  };
+
+  return new Promise((resovle, reject) => {
+
+    https.get(options, (resp) => {
+
+      let data = '';
+      resp.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      resp.on('end', () => {
+        resovle({
+          body: data,
+          response: resp
+        });
+      });
+
+    }).on("error", (err) => {
+      reject(err);
+    });
+
+  });
+
+}
 
 /* GET home page. */
 router.get('/url/:url', function(req, res, next) {
   const URL = req.params.url;
-  const parsedURL = url.parse(URL);
-  console.log(parsedURL);
-
-  console.log('Original http headers.');
-  console.log(req.headers);
-
-  delete req.headers.host;
-
-  const urlHostName = parsedURL.hostname;
-  const urlPath = parsedURL.path;
-
-  const options = {
-    hostname: 'baidu.com',
-    port: 443,
-    path: '/',
-    method: 'GET',
-    headers: req.headers
-  };
-
-  console.log('Options for get');
-  console.log(options);
-
-  https.get(options, (resp) => {
-
-    console.log('HTTP headers got from server.')
-    console.log('headers:', resp.headers);
-    console.log('status code:', resp.statusCode);
-
-    if (resp.statusCode != 200) {
-      //res.statusCode = resp.statusCode;
-    }
-
-    res.set(resp.headers);
-
-    let data = '';
-
-    // A chunk of data has been recieved.
-    resp.on('data', (chunk) => {
-      data += chunk;
-    });
-
-    // The whole response has been received. Print out the result.
-    resp.on('end', () => {
-      console.log(data);
-      res.end(data);
-      //res.render('index', { title: 'Express' });
-    });
-
-  }).on("error", (err) => {
-    console.log("Error: " + err.message);
+  let evyyNetCookie = '';
+  // vist evyy.net
+  getViaProxy(URL, Object.assign({}, req.headers)).then((data) => {
+    console.log(data.response.statusCode);
+    console.log(data.response.headers);
+    const location = data.response.headers.location;
+    const cookie = data.response.headers['set-cookie'][0].split(';')[0];
+    evyyNetCookie = cookie;
+    // vist ojrq.net
+    return getViaProxy(
+      location,
+      Object.assign({}, req.headers));
+  }).then((data) => {
+    console.log(data.response.statusCode);
+    console.log(data.response.headers);
+    // vist evyy.net
+    const location = data.response.headers.location;
+    return getViaProxy(
+      location,
+      Object.assign({}, req.headers, {Cookie: evyyNetCookie}));
+  }).then((data) => {
+    console.log(data.response.statusCode);
+    console.log(data.response.headers);
+    const location = data.response.headers.location;
+    res.redirect(data.response.statusCode, location);
+  }).catch((err) => {
+    console.log(err);
+    res.render('index', { title: 'Express' });
   });
-
 });
 
 module.exports = router;
